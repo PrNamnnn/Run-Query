@@ -1,0 +1,11 @@
+order_id,customer_id,order_date,delivery_date,region,total_amount,status
+1001,501,2026-10-01,2026-10-04,North,249.50,Delivered
+1002,502,2026-10-02,2026-10-05,South,120.00,Delivered
+1003,503,2026-10-03,2026-10-07,East,540.20,Shipped
+1004,501,2026-10-04,2026-10-08,North,75.90,Delivered
+1005,504,2026-10-05,2026-10-09,West,310.00,Processing
+1006,505,2026-10-06,2026-10-10,South,98.50,Delivered
+1007,502,2026-10-07,2026-10-11,South,415.00,Delivered
+1008,506,2026-10-08,2026-10-12,East,620.75,Processing
+1009,507,2026-10-09,2026-10-13,West,150.00,Shipped
+1010,503,2026-10-10,2026-10-14,East,280.30,Delivered

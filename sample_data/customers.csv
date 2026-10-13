@@ -1,0 +1,8 @@
+customer_id,customer_name,city,country,segment
+501,Alice Johnson,New York,USA,Consumer
+502,Bob Smith,Dallas,USA,Corporate
+503,Charlie Davis,Boston,USA,Home Office
+504,Diana Evans,Seattle,USA,Consumer
+505,Ethan Brown,Atlanta,USA,Corporate
+506,Fiona Green,Chicago,USA,Home Office
+507,George White,Denver,USA,Consumer
