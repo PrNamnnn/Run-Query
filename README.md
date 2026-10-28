@@ -1,201 +1,219 @@
-# SQL Workspace
+# Run Query
 
-**SQL Workspace** is a production-quality, local-first analytical SQL playground. It allows users to upload CSV datasets, write and execute **SQL Server / SSMS-style SQL queries**, inspect results in a spreadsheet-like grid, and persist their work without requiring external application databases (no PostgreSQL, MySQL, Redis, or Celery).
+**Run Query** is a production-grade PostgreSQL analytical SQL practice platform. It enables analysts, engineers, and students to upload CSV datasets, write real PostgreSQL queries against isolated schemas, inspect results in a spreadsheet-like grid, and persist their work securely across devices.
 
-Powered by **DuckDB In-Memory** and a modern **Next.js (React 19) + Tailwind CSS** frontend.
-
----
-
-## Features
-
-- **Local-First Architecture**: No application database servers required. Uploaded datasets and metadata persist in browser **IndexedDB**, while analytical execution runs directly in embedded DuckDB memory.
-- **Unified & Reliable Execution**: Single-path query pipeline (`Ctrl+Enter`, `Cmd+Enter`, and Run button share identical state transitions). Predictable result handling, even for 0-row results.
-- **SSMS / SQL Server Syntax Support**: Automatic translation of common T-SQL idioms like `SELECT TOP (N)`, `[bracket_identifiers]`, `ISNULL()`, `GETDATE()`, and `LEN()`.
-- **Dynamic Editor Font Zoom**: Zoom in/out smoothly using `Ctrl/Cmd + Scroll`, `Ctrl/Cmd + + / -`, `Ctrl + 0`, or through Settings without triggering browser webpage zoom.
-- **Theme & Appearance Engine**: Dark, Light, System (`prefers-color-scheme`), and Custom themes with accent presets (Blue, Indigo, Emerald, Purple, Orange) and custom hex support with smooth 200ms transitions.
-- **Full Resizability**: Draggable sidebar width (220px–450px), split editor/results pane (20%–80%), and spreadsheet result table column widths.
-- **CSV Table Renaming**: Rename uploaded tables directly from the schema explorer with validation and backend DuckDB synchronization.
-- **Instant Schema Detection**: Automatically infers column names and types (`BIGINT`, `VARCHAR`, `DOUBLE`, `DATE`) from raw CSV uploads.
-- **Monaco SQL Code Editor**: Dark and light-themed editor with SQL keyword autocomplete, error highlighting, line numbers, and keyboard shortcuts.
-- **Query History**: Automatically retains the last 30 days of query history and prunes older entries.
-- **Saved Queries**: Bookmark frequently used queries locally.
-- **Spreadsheet-style Results Table**: Fast row virtualization, row numbers, execution timing, and export to CSV or JSON.
-- **Command Palette (`Ctrl+K`)**: Quick keyboard navigation for running queries, uploading files, opening settings, and managing views.
-- **Professional Custom Favicon**: Handcrafted SVG database-terminal brand icon.
+Powered by **Supabase PostgreSQL**, **FastAPI**, **Next.js 16 (React 19)**, and **Monaco Editor**.
 
 ---
 
-## Architecture
+## Architecture Overview
 
 ```text
 ┌────────────────────────────────────────────────────────┐
-│               Frontend (Next.js / React)               │
-│   Monaco Editor · Virtual Table · IndexedDB Storage     │
+│             Next.js 16 (React 19) Frontend             │
+│    Supabase Auth Client  ·  Monaco Editor  ·  Grid     │
 └───────────────────────────┬────────────────────────────┘
-                            │ REST API (JSON / FormData)
+                            │ HTTPS + Bearer <Supabase JWT>
                             ▼
 ┌────────────────────────────────────────────────────────┐
-│                  Backend (FastAPI)                     │
-│         CSV Parser · T-SQL Syntax Translator           │
+│                  FastAPI Backend                       │
+│    JWT Authentication  ·  User Authorization           │
+│    CSV Safe Importer   ·  PostgreSQL Pool (psycopg)    │
 └───────────────────────────┬────────────────────────────┘
-                            │ In-Memory C-Bindings
+                            │ Secure Connection Pool (TLS)
                             ▼
 ┌────────────────────────────────────────────────────────┐
-│             Embedded DuckDB Analytical Engine          │
-│                Instant Vectorized Queries              │
+│              Supabase Managed PostgreSQL               │
+│                                                        │
+│  Public Schema:                                        │
+│    - datasets (metadata & ownership)                   │
+│    - saved_queries (bookmarked queries)                │
+│    - query_history (execution log)                     │
+│                                                        │
+│  Per-User Isolated Schemas ("usr_<user_id>"):          │
+│    - orders, customers, etc. (direct practice tables)  │
 └────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Installation & Setup
+## Key Capabilities & Security Architecture
 
-### Prerequisites
+1. **Real PostgreSQL Analytical Engine**:
+   - Executes user queries directly against native PostgreSQL (not an emulation layer).
+   - Supports advanced SQL operations: `JOIN`, `LEFT JOIN`, `GROUP BY`, `HAVING`, CTEs (`WITH`), window functions (`ROW_NUMBER()`, `RANK()`, `LEAD()`, `LAG()`), `CASE`, date/time functions, string functions, and aggregations.
 
-- Python 3.10+
-- Node.js 18+ and npm
+2. **Per-User Schema Isolation**:
+   - Each authenticated user is provisioned an isolated PostgreSQL schema: `usr_<uuid>`.
+   - When a user uploads `orders.csv`, the table is created at `"usr_<uuid>"."orders"`.
+   - Query sessions configure:
+     ```sql
+     SET LOCAL statement_timeout = '15s';
+     SET LOCAL search_path = "usr_<user_id>", public;
+     SET TRANSACTION READ ONLY;
+     ```
+   - User A can never discover, query, modify, or drop User B's tables.
 
-### 1. Backend Setup
+3. **Enterprise Authentication via Supabase Auth**:
+   - Email/password registration and sign in.
+   - Session persistence and automatic token refresh.
+   - Built-in secure password recovery flow: recovery email -> secure link -> password reset -> sign in.
+   - Protected API routes: every backend endpoint validates the Supabase Bearer JWT.
 
-```bash
-cd backend
-python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On macOS / Linux:
-# source venv/bin/activate
+4. **Query Execution Protection**:
+   - Practice platform security policy: queries are validated to begin with `SELECT`, `WITH`, `EXPLAIN`, or `TABLE`.
+   - Structural modifications (`DROP`, `ALTER`, `CREATE`, `DELETE`, `UPDATE`, `INSERT`) and administrative functions (`pg_read_file`, `pg_sleep`, `lo_import`, `pg_terminate_backend`) are strictly blocked.
+   - Read-only transaction enforcement (`BEGIN READ ONLY; ... ROLLBACK;`).
+   - Runaway query prevention via strict 15-second database timeouts.
+   - Clean, sanitized error reporting that hides database credentials and connection strings while providing clear syntax error pointers.
 
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+5. **Safe CSV Ingestion**:
+   - Strips non-alphanumeric characters and SQL reserved keywords from table and column names.
+   - Deduplicates headers (`column`, `column_1`).
+   - Infers column data types (`BIGINT`, `DOUBLE PRECISION`, `BOOLEAN`, `DATE`, `TEXT`).
+   - High-throughput batch insertion into PostgreSQL using connection pooling (`psycopg_pool`).
+
+6. **Account Deletion & Resource Cleanup**:
+   - Permanently drops the user's PostgreSQL schema (`DROP SCHEMA IF EXISTS "usr_<id>" CASCADE`).
+   - Purges metadata records from `datasets`, `saved_queries`, and `query_history`.
+   - Removes the authentication identity from Supabase Auth via the admin API.
+
+7. **Developer Tool Aesthetics**:
+   - True-black / near-black dark theme (`#000000`, `#0A0A0A`, `#0F0F0F`, `#141414`) with subtle neutral borders (`#1E1E1E`, `#262626`).
+   - Minimal geometric Run Query logo mark (combining terminal prompt and database schema disks).
+   - Resizable sidebar and split query editor / results panels.
+
+---
+
+## Database Metadata Schema
+
+```sql
+-- Datasets Metadata
+CREATE TABLE IF NOT EXISTS public.datasets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    display_name TEXT NOT NULL,
+    table_name TEXT NOT NULL,
+    row_count INTEGER NOT NULL DEFAULT 0,
+    columns JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT unique_user_table UNIQUE (user_id, table_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_datasets_user_id ON public.datasets(user_id);
+
+-- Saved Queries
+CREATE TABLE IF NOT EXISTS public.saved_queries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    name TEXT NOT NULL,
+    query TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_queries_user_id ON public.saved_queries(user_id);
+
+-- Query History
+CREATE TABLE IF NOT EXISTS public.query_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    query TEXT NOT NULL,
+    execution_time_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    row_count INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_history_user_timestamp ON public.query_history(user_id, created_at DESC);
 ```
 
-The backend API will be live at `http://127.0.0.1:8000`.
+---
 
-### 2. Frontend Setup
+## Setup & Local Development
 
-In a new terminal:
+### 1. Prerequisites
+- **Node.js**: v18+
+- **Python**: 3.10+
+- **Supabase Account**: Free project on [supabase.com](https://supabase.com)
 
+### 2. Environment Configuration
+Copy `.env.example` to `.env` in the root directory:
+```bash
+cp .env.example .env
+```
+
+Fill in your Supabase credentials:
+- `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase Project URL (`https://<id>.supabase.co`).
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase anon/public key.
+- `DATABASE_URL`: Supabase PostgreSQL connection string (Transaction pooler on port 6543 recommended).
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service-role secret (server-side only, used for admin account deletion).
+- `SUPABASE_JWT_SECRET`: Optional JWT secret for high-speed local signature decoding.
+
+### 3. Backend Setup
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# Run backend development server
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+### 4. Frontend Setup
 ```bash
 cd frontend
 npm install
+
+# Run frontend development server
 npm run dev
 ```
 
-Open `http://localhost:3000` in your browser.
+Visit [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## CSV Workflow
+## Running Automated Tests
 
-1. Sign in on the login page (or click **Skip as Analyst**).
-2. Click **Upload CSV** or drop your files (`sample_data/orders.csv`, `customers.csv`, `products.csv`).
-3. DuckDB auto-detects column names and types, and the table appears in the left **Datasets** explorer.
-4. Double-click any table or column name in the sidebar to paste it into the editor.
-5. Hit `Ctrl + Enter` (or click **Run Query**).
-6. Export the output to CSV or JSON using the export buttons above the result grid.
-
----
-
-## SQL Examples
-
-### 1. Basic Aggregation & SSMS `TOP` Syntax
-
-```sql
-SELECT TOP 5
-    region,
-    COUNT(*) AS total_orders,
-    ROUND(SUM(total_amount), 2) AS total_revenue
-FROM [orders]
-GROUP BY region
-ORDER BY total_revenue DESC;
+Run backend unit and security tests:
+```bash
+cd backend
+python -m pytest tests/test_security_and_api.py -v
 ```
 
-### 2. Multi-Table Join
-
-```sql
-SELECT 
-    o.order_id,
-    c.customer_name,
-    c.city,
-    o.region,
-    o.total_amount,
-    o.status
-FROM orders o
-JOIN customers c ON o.customer_id = c.customer_id
-WHERE o.status = 'Delivered'
-ORDER BY o.total_amount DESC;
-```
-
-### 3. T-SQL Function Compatibility
-
-```sql
-SELECT 
-    customer_name,
-    ISNULL(city, 'Unknown') AS city_location,
-    LEN(customer_name) AS name_length
-FROM customers;
-```
+All 9 security and isolation tests will run:
+- Unauthenticated API access blocking
+- Token forgery rejection
+- Practice query validation
+- Malicious SQL prevention (`DROP`, `ALTER`, `TRUNCATE`, privileged functions)
+- Cross-user schema isolation verification
+- CSV table identifier sanitization
+- CSV column header sanitization and deduplication
+- Column type inference
 
 ---
 
-## Keyboard Shortcuts
+## Deployment Guide
 
-| Shortcut | Action |
-| --- | --- |
-| `Ctrl + Enter` / `Cmd + Enter` | Run active SQL query |
-| `Ctrl + S` / `Cmd + S` | Save current query |
-| `Ctrl + K` / `Cmd + K` | Open Command Palette |
-| `Escape` | Close modal or palette |
+### Frontend -> Vercel
+1. Import the repository on [Vercel](https://vercel.com).
+2. Set Root Directory to `frontend`.
+3. Add Environment Variables:
+   - `NEXT_PUBLIC_API_URL`: Backend public URL (e.g. `https://api.runquery.onrender.com`)
+   - `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase public key
+4. Deploy.
 
----
-
-## Limitations
-
-- Data processing is executed in embedded memory: suited for analytical queries and datasets up to several gigabytes within system RAM limits.
-- System-level operations (e.g. arbitrary OS commands or filesystem execution) are intentionally blocked for security.
-
----
-
-## Project Structure
-
-```text
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI application entrypoint
-│   │   ├── routes/
-│   │   │   ├── query.py         # /api/query execution endpoint
-│   │   │   ├── upload.py        # /api/upload CSV processing endpoint
-│   │   │   └── schema.py        # /api/schema tables and describe endpoint
-│   │   ├── services/
-│   │   │   ├── duckdb_service.py# In-memory DuckDB engine & T-SQL translator
-│   │   │   └── csv_service.py   # Temporary CSV streaming & table registration
-│   │   └── models/
-│   │       └── schemas.py       # Pydantic request and response schemas
-│   └── requirements.txt
-├── frontend/
-│   ├── app/
-│   │   ├── layout.tsx
-│   │   ├── page.tsx             # Main dashboard layout and state orchestrator
-│   │   └── globals.css          # Dark developer theme tokens
-│   ├── components/
-│   │   ├── LoginPage.tsx        # Developer authentication screen
-│   │   ├── Sidebar.tsx          # Schema explorer, saved queries, 30d history
-│   │   ├── QueryEditor.tsx      # Monaco editor integration
-│   │   ├── ResultsTable.tsx     # Spreadsheet table grid and export controls
-│   │   ├── StatusBar.tsx        # Row count, duration, engine status
-│   │   ├── UploadModal.tsx      # Drag & drop CSV modal
-│   │   ├── SaveQueryModal.tsx   # Query bookmarking modal
-│   │   └── CommandPalette.tsx   # Ctrl+K command menu
-│   ├── lib/
-│   │   ├── api.ts               # Backend API client
-│   │   └── db.ts                # IndexedDB persistence (datasets, 30d history)
-│   └── types/
-│       └── index.ts             # TypeScript definitions
-├── sample_data/
-│   ├── orders.csv               # Sample sales orders dataset
-│   ├── customers.csv            # Sample customer records dataset
-│   └── products.csv             # Sample product catalog dataset
-├── .env.example
-├── .gitignore
-└── README.md
-```
+### Backend -> Render / Railway
+1. Create a Web Service pointing to the `backend` folder.
+2. Build Command: `pip install -r requirements.txt`
+3. Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+4. Add Environment Variables:
+   - `DATABASE_URL`: Supabase PostgreSQL connection string
+   - `SUPABASE_URL`: Your Supabase URL
+   - `SUPABASE_ANON_KEY`: Your Supabase anon key
+   - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key
+   - `CORS_ORIGINS`: Your Vercel frontend URL (e.g. `https://your-run-query.vercel.app`)

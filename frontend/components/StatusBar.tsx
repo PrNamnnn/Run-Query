@@ -16,16 +16,16 @@ export const StatusBar: React.FC<StatusBarProps> = ({ result, isRunning, totalTa
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5">
           <Database className="w-3 h-3 text-blue-500" />
-          <span className="text-[var(--text-secondary)]">DuckDB In-Memory</span>
+          <span className="text-[var(--text-secondary)]">PostgreSQL Engine</span>
         </div>
         <span>•</span>
-        <span>{totalTables} table{totalTables === 1 ? '' : 's'} loaded</span>
+        <span>{totalTables} table{totalTables === 1 ? '' : 's'} available</span>
         {isRunning && (
           <>
             <span>•</span>
             <span className="text-blue-500 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
-              Executing query...
+              Executing on PostgreSQL...
             </span>
           </>
         )}

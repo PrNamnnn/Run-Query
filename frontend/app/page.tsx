@@ -11,36 +11,36 @@ import { SaveQueryModal } from '@/components/SaveQueryModal';
 import { CommandPalette } from '@/components/CommandPalette';
 import { SettingsModal, AppSettings } from '@/components/SettingsModal';
 import { RenameTableModal } from '@/components/RenameTableModal';
-import { executeSqlQuery, fetchSchema, deleteTable, renameTable, uploadCsvFiles } from '@/lib/api';
+import { RunQueryLogo } from '@/components/RunQueryLogo';
 import { 
-  addQueryHistory, 
-  getAllHistory, 
-  deleteHistoryItem, 
-  clearAllHistory,
-  saveQueryToIDB, 
-  getAllSavedQueries, 
-  deleteSavedQuery,
-  getAllDatasetsFromIDB,
-  removeDatasetFromIDB,
-  renameDatasetInIDB
-} from '@/lib/db';
+  executeSqlQuery, 
+  fetchSchema, 
+  deleteTable, 
+  renameTable,
+  fetchQueryHistory,
+  clearQueryHistory,
+  deleteQueryHistoryItem,
+  fetchSavedQueries,
+  createSavedQuery,
+  deleteSavedQuery
+} from '@/lib/api';
+import { getSupabase } from '@/lib/supabase';
 import { TableSchema, QueryResult, QueryHistoryItem, SavedQuery } from '@/types';
 import { 
-  Database, 
   Upload, 
   Search, 
   LogOut, 
-  PanelLeftClose,
-  PanelLeftOpen,
-  Sliders
+  PanelLeftClose, 
+  PanelLeftOpen, 
+  Sliders 
 } from 'lucide-react';
 
-const DEFAULT_SQL = `-- SQL Workspace
--- Select all orders or write your analytical queries
+const DEFAULT_SQL = `-- Run Query — PostgreSQL Practice Workspace
+-- Select orders or write analytical SQL
 SELECT 
     region, 
     COUNT(*) AS total_orders,
-    ROUND(SUM(total_amount), 2) AS total_revenue
+    ROUND(SUM(total_amount)::numeric, 2) AS total_revenue
 FROM orders
 GROUP BY region
 ORDER BY total_revenue DESC;`;
@@ -55,14 +55,12 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export default function Home() {
-  // Authentication state
+  // Authentication state managed by Supabase
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   // App Settings state with localStorage persistence
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-
-  // Resolved theme state (for passing to Monaco vs vs-dark)
   const [effectiveTheme, setEffectiveTheme] = useState<'dark' | 'light'>('dark');
 
   // App UI state
@@ -75,12 +73,12 @@ export default function Home() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [renameTargetTable, setRenameTargetTable] = useState<string | null>(null);
 
-  // Query and execution state (explicit single source of truth)
+  // Query and execution state
   const [sqlQuery, setSqlQuery] = useState(DEFAULT_SQL);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
 
-  // Ref mirror for sqlQuery and isRunning to prevent any stale closure issues
+  // Ref mirrors to avoid stale closures in Monaco commands and event listeners
   const sqlQueryRef = useRef(sqlQuery);
   const isRunningRef = useRef(isRunning);
 
@@ -92,7 +90,7 @@ export default function Home() {
     isRunningRef.current = isRunning;
   }, [isRunning]);
 
-  // Local-first persistent state
+  // Server-persisted state
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [history, setHistory] = useState<QueryHistoryItem[]>([]);
 
@@ -100,32 +98,78 @@ export default function Home() {
   const isResizingSplitRef = useRef(false);
   const isResizingSidebarRef = useRef(false);
 
-  // 1. Load user session and settings from localStorage
+  // 1. Initialize Supabase Auth Session
   useEffect(() => {
-    const savedUser = localStorage.getItem('sql_workspace_user');
-    if (savedUser) {
-      setCurrentUser(savedUser);
+    const supabase = getSupabase();
+
+    // Guard: If arriving at root with recovery parameters, redirect to /reset-password
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      if (hash.includes('type=recovery') || search.includes('type=recovery') || search.includes('token_hash=')) {
+        window.location.href = `/reset-password${search || hash}`;
+        return;
+      }
     }
 
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash || '';
+        const search = window.location.search || '';
+        if (hash.includes('type=recovery') || search.includes('type=recovery') || search.includes('token_hash=')) {
+          window.location.href = `/reset-password${search || hash}`;
+          return;
+        }
+      }
+      if (session?.user) {
+        setCurrentUser(session.user.email || 'User');
+      }
+      setIsAuthChecking(false);
+    }).catch(() => {
+      setIsAuthChecking(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        if (typeof window !== 'undefined') {
+          window.location.href = `/reset-password${window.location.search || window.location.hash}`;
+        }
+        return;
+      }
+      if (session?.user) {
+        if (typeof window !== 'undefined') {
+          const hash = window.location.hash || '';
+          const search = window.location.search || '';
+          if (hash.includes('type=recovery') || search.includes('type=recovery') || search.includes('token_hash=')) {
+            window.location.href = `/reset-password${search || hash}`;
+            return;
+          }
+        }
+        setCurrentUser(session.user.email || 'User');
+      } else {
+        setCurrentUser(null);
+      }
+      setIsAuthChecking(false);
+    });
+
     try {
-      const savedSettings = localStorage.getItem('sql_workspace_settings');
+      const savedSettings = localStorage.getItem('run_query_settings');
       if (savedSettings) {
         setSettings(prev => ({ ...prev, ...JSON.parse(savedSettings) }));
       }
-    } catch {
-      // Ignore corrupted settings
-    }
+    } catch {}
 
-    setIsAuthChecking(false);
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // 2. Persist settings and apply CSS theme / variables
   useEffect(() => {
     try {
-      localStorage.setItem('sql_workspace_settings', JSON.stringify(settings));
+      localStorage.setItem('run_query_settings', JSON.stringify(settings));
     } catch {}
 
-    // Resolve system theme if applicable
     let resolvedTheme: 'dark' | 'light' = 'dark';
     if (settings.theme === 'system') {
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -154,56 +198,41 @@ export default function Home() {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, [settings.theme]);
 
-  // Restore stored datasets and backend tables on startup
-  const refreshSchemaAndRestore = useCallback(async () => {
+  // 3. Load Datasets from Supabase PostgreSQL
+  const refreshSchema = useCallback(async () => {
     try {
       const schemaData = await fetchSchema();
-      let currentTables: TableSchema[] = schemaData.tables || [];
-
-      // If backend is empty (e.g. backend restarted), restore from IndexedDB
-      if (currentTables.length === 0) {
-        const storedDatasets = await getAllDatasetsFromIDB();
-        if (storedDatasets.length > 0) {
-          const filesToRestore: File[] = storedDatasets.map(ds => {
-            return new File([ds.content], `${ds.table_name}.csv`, { type: 'text/csv' });
-          });
-          const uploadRes = await uploadCsvFiles(filesToRestore);
-          currentTables = uploadRes.map((r: any) => ({
-            table_name: r.table_name,
-            row_count: r.row_count,
-            columns: r.columns,
-          }));
-        }
+      setTables(schemaData.tables || []);
+    } catch (err: any) {
+      if (err.message?.includes('session has expired')) {
+        setCurrentUser(null);
       }
-
-      setTables(currentTables);
-    } catch (err) {
-      console.error('Failed to sync tables:', err);
+      console.error('Failed to sync PostgreSQL schema:', err);
     }
   }, []);
 
-  // Load saved queries and history from IndexedDB
-  const refreshLocalData = useCallback(async () => {
+  // 4. Load Saved Queries and History from PostgreSQL
+  const refreshUserData = useCallback(async () => {
     try {
-      const [hist, saved] = await Promise.all([
-        getAllHistory(),
-        getAllSavedQueries(),
+      const [histData, savedData] = await Promise.all([
+        fetchQueryHistory(),
+        fetchSavedQueries(),
       ]);
-      setHistory(hist);
-      setSavedQueries(saved);
+      setHistory(histData || []);
+      setSavedQueries(savedData || []);
     } catch (err) {
-      console.error('Failed to load local history or saved queries:', err);
+      console.error('Failed to load user history / saved queries:', err);
     }
   }, []);
 
   useEffect(() => {
     if (currentUser) {
-      refreshSchemaAndRestore();
-      refreshLocalData();
+      refreshSchema();
+      refreshUserData();
     }
-  }, [currentUser, refreshSchemaAndRestore, refreshLocalData]);
+  }, [currentUser, refreshSchema, refreshUserData]);
 
-  // Unified Query Execution Pipeline (Single Source of Truth)
+  // Unified Query Execution Pipeline
   const handleExecute = useCallback(async () => {
     const queryToRun = sqlQueryRef.current.trim();
     if (!queryToRun || isRunningRef.current) return;
@@ -214,7 +243,7 @@ export default function Home() {
 
     try {
       const res = await executeSqlQuery(queryToRun);
-      
+
       setQueryResult({
         success: Boolean(res.success),
         columns: res.columns || [],
@@ -223,25 +252,12 @@ export default function Home() {
         total_count: res.total_count ?? (res.rows ? res.rows.length : 0),
         execution_time_ms: res.execution_time_ms ?? 0,
         error: res.error || null,
-        translated_query: res.translated_query || null,
       });
 
-      // Record into 30-day history
-      const historyItem: QueryHistoryItem = {
-        id: `h_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        query: queryToRun,
-        timestamp: Date.now(),
-        execution_time_ms: res.execution_time_ms ?? 0,
-        status: res.success ? 'success' : 'error',
-        row_count: res.row_count ?? 0,
-        error: res.error,
-      };
-
-      await addQueryHistory(historyItem);
-      await refreshLocalData();
+      await refreshUserData();
     } catch (err: any) {
       const duration = Date.now() - startTs;
-      const failedResult: QueryResult = {
+      setQueryResult({
         success: false,
         columns: [],
         rows: [],
@@ -249,27 +265,15 @@ export default function Home() {
         total_count: 0,
         execution_time_ms: duration,
         error: err.message || 'Unknown network or query execution error.',
-      };
-      setQueryResult(failedResult);
-
-      const historyItem: QueryHistoryItem = {
-        id: `h_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        query: queryToRun,
-        timestamp: Date.now(),
-        execution_time_ms: duration,
-        status: 'error',
-        row_count: 0,
-        error: failedResult.error,
-      };
-      await addQueryHistory(historyItem);
-      await refreshLocalData();
+      });
+      await refreshUserData();
     } finally {
       setIsRunning(false);
       isRunningRef.current = false;
     }
-  }, [refreshLocalData]);
+  }, [refreshUserData]);
 
-  // Global Keyboard listener for Ctrl/Cmd shortcuts outside editor
+  // Global Keyboard listener for Ctrl/Cmd shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -290,16 +294,17 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleExecute]);
 
-  // Handle Login
-  const handleLoginSuccess = (email: string) => {
-    localStorage.setItem('sql_workspace_user', email);
-    setCurrentUser(email);
-  };
-
   // Handle Logout
-  const handleLogout = () => {
-    localStorage.removeItem('sql_workspace_user');
+  const handleLogout = async () => {
+    try {
+      const supabase = getSupabase();
+      await supabase.auth.signOut();
+    } catch {}
     setCurrentUser(null);
+    setTables([]);
+    setHistory([]);
+    setSavedQueries([]);
+    setQueryResult(null);
   };
 
   // Insert column / table identifier into editor
@@ -309,11 +314,10 @@ export default function Home() {
 
   // Drop table
   const handleDeleteTable = async (tableName: string) => {
-    if (!confirm(`Are you sure you want to drop table '${tableName}'?`)) return;
+    if (!confirm(`Are you sure you want to permanently drop table '${tableName}' from your PostgreSQL schema?`)) return;
     try {
       await deleteTable(tableName);
-      await removeDatasetFromIDB(tableName);
-      await refreshSchemaAndRestore();
+      await refreshSchema();
     } catch (err: any) {
       alert(`Could not drop table: ${err.message}`);
     }
@@ -322,11 +326,8 @@ export default function Home() {
   // Rename table handler
   const handleRenameTable = async (oldName: string, newName: string) => {
     try {
-      const res = await renameTable(oldName, newName);
-      const canonicalOld = res.old_name || oldName;
-      const canonicalNew = res.new_name || newName;
-      await renameDatasetInIDB(canonicalOld, canonicalNew);
-      await refreshSchemaAndRestore();
+      await renameTable(oldName, newName);
+      await refreshSchema();
     } catch (err: any) {
       alert(`Could not rename table: ${err.message}`);
     }
@@ -334,37 +335,46 @@ export default function Home() {
 
   // Save Query
   const handleSaveQuery = async (name: string) => {
-    const newSaved: SavedQuery = {
-      id: `sq_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      name,
-      query: sqlQueryRef.current,
-      created_at: Date.now(),
-      updated_at: Date.now(),
-    };
-    await saveQueryToIDB(newSaved);
-    await refreshLocalData();
+    try {
+      await createSavedQuery(name, sqlQueryRef.current);
+      await refreshUserData();
+    } catch (err: any) {
+      alert(`Failed to save query: ${err.message}`);
+    }
   };
 
   // Delete saved query
   const handleDeleteSavedQuery = async (id: string) => {
-    await deleteSavedQuery(id);
-    await refreshLocalData();
+    try {
+      await deleteSavedQuery(id);
+      await refreshUserData();
+    } catch (err: any) {
+      alert(`Failed to delete saved query: ${err.message}`);
+    }
   };
 
   // Delete history item
   const handleDeleteHistoryItem = async (id: string) => {
-    await deleteHistoryItem(id);
-    await refreshLocalData();
+    try {
+      await deleteQueryHistoryItem(id);
+      await refreshUserData();
+    } catch (err: any) {
+      alert(`Failed to delete history item: ${err.message}`);
+    }
   };
 
   // Clear all history
   const handleClearHistory = async () => {
-    if (!confirm('Clear all query history for the last 30 days?')) return;
-    await clearAllHistory();
-    await refreshLocalData();
+    if (!confirm('Clear all query history?')) return;
+    try {
+      await clearQueryHistory();
+      await refreshUserData();
+    } catch (err: any) {
+      alert(`Failed to clear history: ${err.message}`);
+    }
   };
 
-  // 1. Resizing Editor / Results Split Pane via single flex-basis source of truth
+  // Resizing Editor / Results Split Pane
   const handleMouseDownSplitResize = (e: React.MouseEvent) => {
     e.preventDefault();
     isResizingSplitRef.current = true;
@@ -375,7 +385,6 @@ export default function Home() {
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const newPercent = ((moveEvent.clientY - rect.top) / rect.height) * 100;
-      // Clamp between 15% and 85% to ensure minimum heights
       if (newPercent >= 15 && newPercent <= 85) {
         setSettings(s => ({ ...s, editorHeightPercent: newPercent }));
       }
@@ -391,7 +400,7 @@ export default function Home() {
     document.addEventListener('mouseup', onMouseUp);
   };
 
-  // 2. Resizing Sidebar Width
+  // Resizing Sidebar Width
   const handleMouseDownSidebarResize = (e: React.MouseEvent) => {
     e.preventDefault();
     isResizingSidebarRef.current = true;
@@ -414,14 +423,15 @@ export default function Home() {
 
   if (isAuthChecking) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[var(--bg-app)] text-[var(--text-muted)]">
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[var(--bg-app)] text-[var(--text-muted)] gap-3 select-none">
+        <RunQueryLogo size={36} />
         <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (!currentUser) {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+    return <LoginPage onLoginSuccess={(email) => setCurrentUser(email)} />;
   }
 
   return (
@@ -442,11 +452,9 @@ export default function Home() {
           </button>
 
           <div className="flex items-center gap-2">
-            <div className="h-5 w-5 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500">
-              <Database className="w-3 h-3 stroke-[2]" />
-            </div>
+            <RunQueryLogo size={20} />
             <span className="text-xs font-semibold tracking-tight text-[var(--text-primary)]">
-              SQL Workspace
+              Run Query
             </span>
           </div>
 
@@ -461,7 +469,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Center / Search bar & command shortcut */}
+        {/* Center: Command Palette Trigger */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsCommandPaletteOpen(true)}
@@ -475,23 +483,23 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Right user & Settings & logout */}
+        {/* Right: User / Settings / Logout */}
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors cursor-pointer"
-            title="Settings"
+            title="Settings & Account"
           >
             <Sliders className="w-3.5 h-3.5" />
           </button>
 
-          <span className="text-[11px] font-mono text-[var(--text-muted)] hidden md:inline truncate max-w-[150px]">
+          <span className="text-[11px] font-mono text-[var(--text-muted)] hidden md:inline truncate max-w-[160px]">
             {currentUser}
           </span>
 
           <button
             onClick={handleLogout}
-            className="p-1 rounded text-[var(--text-muted)] hover:text-red-500 hover:bg-[var(--bg-surface-hover)] transition-colors cursor-pointer"
+            className="p-1 rounded text-[var(--text-muted)] hover:text-red-400 hover:bg-[var(--bg-surface-hover)] transition-colors cursor-pointer"
             title="Sign out"
           >
             <LogOut className="w-3.5 h-3.5" />
@@ -532,9 +540,9 @@ export default function Home() {
           </div>
         )}
 
-        {/* CENTER PANE: PROPER VERTICAL FLEX LAYOUT (NO Z-INDEX OVERLAPS) */}
+        {/* CENTER PANE: SPLIT RESIZABLE WORKSPACE */}
         <div id="workspace-center-panel" className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden">
-          {/* Top: SQL Editor (Occupies exact flex-basis without absolute breakout) */}
+          {/* Top: SQL Editor */}
           <div 
             style={{ flex: `0 0 ${settings.editorHeightPercent}%` }} 
             className="min-h-[120px] overflow-hidden"
@@ -552,7 +560,7 @@ export default function Home() {
             />
           </div>
 
-          {/* Split Pane Horizontal Resizer (Real DOM node between panels) */}
+          {/* Split Pane Horizontal Resizer */}
           <div
             onMouseDown={handleMouseDownSplitResize}
             className="h-2 bg-[var(--bg-surface)] hover:bg-blue-500/70 active:bg-blue-600 cursor-row-resize border-y border-[var(--border-subtle)] transition-colors flex items-center justify-center shrink-0 group select-none"
@@ -560,7 +568,7 @@ export default function Home() {
             <div className="w-10 h-0.5 rounded-full bg-[var(--border-strong)] group-hover:bg-white transition-colors" />
           </div>
 
-          {/* Bottom: Query Results (Takes flex-1 remaining space, scrolls internally) */}
+          {/* Bottom: Query Results */}
           <div className="flex-1 min-h-[120px] overflow-hidden flex flex-col">
             <ResultsTable result={queryResult} isRunning={isRunning} />
           </div>
@@ -579,7 +587,7 @@ export default function Home() {
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         onUploadSuccess={() => {
-          refreshSchemaAndRestore();
+          refreshSchema();
         }}
       />
 
@@ -595,6 +603,8 @@ export default function Home() {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onUpdateSettings={setSettings}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {renameTargetTable && (

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Download, AlertCircle, Inbox, Code } from 'lucide-react';
+import { Download, AlertCircle, Inbox } from 'lucide-react';
 import { QueryResult } from '@/types';
 
 interface ResultsTableProps {
@@ -10,7 +10,6 @@ interface ResultsTableProps {
 }
 
 export const ResultsTable: React.FC<ResultsTableProps> = ({ result, isRunning }) => {
-  // Resizable column widths stored in state
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const resizingColRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
 
@@ -91,16 +90,16 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ result, isRunning })
 
   if (isRunning) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-panel)] text-[var(--text-muted)] gap-2">
+      <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-panel)] text-[var(--text-muted)] gap-2 select-none">
         <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs font-mono">Running query on DuckDB engine...</span>
+        <span className="text-xs font-mono">Executing query on PostgreSQL engine...</span>
       </div>
     );
   }
 
   if (!result) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-panel)] text-[var(--text-muted)] p-6 text-center">
+      <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-panel)] text-[var(--text-muted)] p-6 text-center select-none">
         <Inbox className="w-8 h-8 mb-2 stroke-[1.4]" />
         <p className="text-xs font-medium text-[var(--text-secondary)]">No results to display</p>
         <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Write a query and press Ctrl+Enter to execute.</p>
@@ -110,19 +109,14 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ result, isRunning })
 
   if (!result.success || result.error) {
     return (
-      <div className="flex-1 overflow-auto bg-[var(--bg-panel)] p-4 font-mono text-xs text-red-400">
-        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-red-500/20 text-red-400 font-semibold">
+      <div className="flex-1 overflow-auto bg-[var(--bg-panel)] p-4 font-mono text-xs text-red-400 select-text">
+        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-red-500/20 text-red-400 font-semibold select-none">
           <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-          <span>Execution Error</span>
+          <span>PostgreSQL Execution Error</span>
         </div>
         <pre className="whitespace-pre-wrap bg-[var(--bg-header)] p-3 rounded border border-red-500/20 text-[11px] leading-relaxed text-red-400">
           {result.error}
         </pre>
-        {result.translated_query && (
-          <div className="mt-3 text-[11px] text-[var(--text-muted)]">
-            <span className="text-[var(--text-secondary)] font-medium">Translated SQL:</span> {result.translated_query}
-          </div>
-        )}
       </div>
     );
   }
@@ -130,21 +124,15 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ result, isRunning })
   return (
     <div className="flex-1 flex flex-col bg-[var(--bg-panel)] overflow-hidden">
       {/* Table Sub-header / Export Controls */}
-      <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] text-[11px] text-[var(--text-secondary)]">
+      <div className="flex items-center justify-between px-3 py-1 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] text-[11px] text-[var(--text-secondary)] select-none shrink-0">
         <div className="flex items-center gap-2">
           <span className="font-mono text-[var(--text-primary)]">
             {result.row_count === 0
               ? 'Query executed successfully (0 rows)'
               : result.row_count < result.total_count
-              ? `Showing ${result.row_count.toLocaleString()} of ${result.total_count.toLocaleString()} rows`
-              : `${result.row_count.toLocaleString()} rows`}
+              ? `Showing ${result.row_count.toLocaleString()} of ${result.total_count.toLocaleString()}+ rows`
+              : `${result.row_count.toLocaleString()} row${result.row_count === 1 ? '' : 's'}`}
           </span>
-          {result.translated_query && (
-            <span className="flex items-center gap-1 text-[10px] text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20" title={result.translated_query}>
-              <Code className="w-2.5 h-2.5" />
-              <span>T-SQL syntax adapted</span>
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -167,10 +155,10 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ result, isRunning })
         </div>
       </div>
 
-      {/* Spreadsheet-like Table Grid with Resizable Columns */}
+      {/* Spreadsheet Table Grid */}
       <div className="flex-1 overflow-auto">
         <table className="w-full border-collapse text-left font-mono text-[11px]">
-          <thead className="sticky top-0 bg-[var(--bg-header)] z-10 border-b border-[var(--border-strong)]">
+          <thead className="sticky top-0 bg-[var(--bg-header)] z-10 border-b border-[var(--border-strong)] select-none">
             <tr>
               <th className="px-2.5 py-1.5 text-[10px] text-[var(--text-muted)] font-normal border-r border-[var(--border-subtle)] w-12 text-center bg-[var(--bg-header)]">
                 #
@@ -181,10 +169,9 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ result, isRunning })
                   <th
                     key={idx}
                     style={{ width: `${currentWidth}px`, minWidth: `${currentWidth}px`, maxWidth: `${currentWidth}px` }}
-                    className="relative px-3 py-1.5 font-medium text-[var(--text-primary)] border-r border-[var(--border-subtle)] truncate whitespace-nowrap select-none"
+                    className="relative px-3 py-1.5 font-medium text-[var(--text-primary)] border-r border-[var(--border-subtle)] truncate whitespace-nowrap"
                   >
                     <span className="truncate block pr-2">{col}</span>
-                    {/* Drag Handle for column resizing */}
                     <div
                       onMouseDown={(e) => handleMouseDownResize(e, col, currentWidth)}
                       className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 active:bg-blue-500 z-20"

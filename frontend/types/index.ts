@@ -7,6 +7,7 @@ export interface TableSchema {
   table_name: string;
   row_count: number;
   columns: ColumnSchema[];
+  display_name?: string;
 }
 
 export interface QueryResult {
@@ -17,13 +18,12 @@ export interface QueryResult {
   total_count: number;
   execution_time_ms: number;
   error?: string | null;
-  translated_query?: string | null;
 }
 
 export interface QueryHistoryItem {
   id: string;
   query: string;
-  timestamp: number;
+  created_at: string;
   execution_time_ms: number;
   status: 'success' | 'error';
   row_count: number;
@@ -34,17 +34,13 @@ export interface SavedQuery {
   id: string;
   name: string;
   query: string;
-  created_at: number;
-  updated_at: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface StoredCSVDataset {
-  id: string;
-  table_name: string;
-  original_filename: string;
-  file_size: number;
-  row_count: number;
-  columns: ColumnSchema[];
-  content: string; // Stored CSV text for offline / browser reload restoration
-  uploaded_at: number;
+export interface UserProfile {
+  user_id: string;
+  email: string;
+  total_tables: number;
+  total_queries: number;
 }

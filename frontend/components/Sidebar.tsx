@@ -63,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const getTypeIcon = (typeStr: string) => {
     const t = typeStr.toUpperCase();
-    if (t.includes('INT') || t.includes('DOUBLE') || t.includes('FLOAT') || t.includes('DECIMAL')) {
+    if (t.includes('INT') || t.includes('DOUBLE') || t.includes('FLOAT') || t.includes('DECIMAL') || t.includes('NUMERIC')) {
       return <Hash className="w-3 h-3 text-cyan-400 shrink-0" />;
     }
     if (t.includes('DATE') || t.includes('TIME')) {
@@ -86,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               ? 'bg-[var(--bg-surface-hover)] text-[var(--text-primary)]'
               : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
           }`}
-          title="Datasets & Schemas"
+          title="PostgreSQL Datasets"
         >
           <Layers className="w-3.5 h-3.5" />
           <span>Tables ({tables.length})</span>
@@ -112,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               ? 'bg-[var(--bg-surface-hover)] text-[var(--text-primary)]'
               : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
           }`}
-          title="Query History (30 Days)"
+          title="Query History"
         >
           <History className="w-3.5 h-3.5" />
           <span>History</span>
@@ -172,7 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           <span
                             className="text-xs font-mono font-medium text-[var(--text-primary)] truncate"
                             onDoubleClick={() => onInsertText(tbl.table_name)}
-                            title={`Double click to insert '${tbl.table_name}'`}
+                            title={`Double click to insert '${tbl.table_name}' into editor`}
                           >
                             {tbl.table_name}
                           </span>
@@ -247,7 +247,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="px-3 py-8 text-center text-xs text-[var(--text-muted)]">
                 <Bookmark className="w-6 h-6 mx-auto mb-2 text-[var(--border-strong)]" />
                 <p>No queries saved yet.</p>
-                <p className="text-[11px] text-[var(--text-muted)] mt-1">Press Ctrl+S in editor to save.</p>
+                <p className="text-[11px] text-[var(--text-muted)] mt-1">Press Ctrl+S in editor to bookmark.</p>
               </div>
             ) : (
               <div className="space-y-1">
@@ -282,12 +282,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* QUERY HISTORY VIEW (Last 30 Days) */}
+        {/* QUERY HISTORY VIEW */}
         {activeTab === 'history' && (
           <div>
             <div className="flex items-center justify-between px-2 pb-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Last 30 Days ({history.length})
+                Recent Queries ({history.length})
               </span>
               {history.length > 0 && (
                 <button
@@ -302,12 +302,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {history.length === 0 ? (
               <div className="px-3 py-8 text-center text-xs text-[var(--text-muted)]">
                 <History className="w-6 h-6 mx-auto mb-2 text-[var(--border-strong)]" />
-                <p>No query history.</p>
+                <p>No query history recorded.</p>
               </div>
             ) : (
               <div className="space-y-1">
                 {history.map(item => {
-                  const dateStr = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const dateObj = new Date(item.created_at);
+                  const dateStr = !isNaN(dateObj.getTime())
+                    ? dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : '';
                   return (
                     <div
                       key={item.id}

@@ -9,7 +9,7 @@ class TableSchema(BaseModel):
     table_name: str
     row_count: int
     columns: List[ColumnSchema]
-    sample_rows: Optional[List[Dict[str, Any]]] = None
+    display_name: Optional[str] = None
 
 class SchemaResponse(BaseModel):
     tables: List[TableSchema]
@@ -27,7 +27,6 @@ class QueryResponse(BaseModel):
     total_count: int = 0
     execution_time_ms: float = 0.0
     error: Optional[str] = None
-    translated_query: Optional[str] = None
 
 class UploadResponse(BaseModel):
     success: bool
@@ -50,3 +49,33 @@ class RenameTableResponse(BaseModel):
     old_name: str
     new_name: str
     message: str
+
+class SavedQueryCreate(BaseModel):
+    name: str
+    query: str
+
+class SavedQueryItem(BaseModel):
+    id: str
+    name: str
+    query: str
+    created_at: str
+    updated_at: str
+
+class QueryHistoryItemSchema(BaseModel):
+    id: str
+    query: str
+    execution_time_ms: float
+    status: str
+    row_count: int
+    error: Optional[str] = None
+    created_at: str
+
+class AccountDeleteResponse(BaseModel):
+    success: bool
+    message: str
+
+class UserMeResponse(BaseModel):
+    user_id: str
+    email: str
+    total_tables: int
+    total_queries: int
