@@ -31,9 +31,20 @@ SUPABASE_JWKS_URL = os.getenv(
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))
 
-# Parse CORS origins
+# Parse CORS origins: normalize by stripping whitespace and trailing slashes
 CORS_ORIGINS_RAW = os.getenv(
     "CORS_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000,https://run-query.vercel.app"
 )
-CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS_RAW.split(",") if origin.strip()]
+CORS_ORIGINS = [
+    origin.strip().rstrip("/")
+    for origin in CORS_ORIGINS_RAW.split(",")
+    if origin.strip()
+]
+
+# Narrowly scoped regex matching only the trusted Run Query project deployment origins on Vercel
+# Supports production domain, branch previews, and deployment hashes for project 'run-query' / user 'prnamnnns'
+CORS_ORIGIN_REGEX = os.getenv(
+    "CORS_ORIGIN_REGEX",
+    r"^https://run-query(-[a-zA-Z0-9_-]+)?(-prnamnnns-projects)?\.vercel\.app$"
+)

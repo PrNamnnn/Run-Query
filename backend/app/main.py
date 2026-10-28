@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import CORS_ORIGINS
+from app.config import CORS_ORIGINS, CORS_ORIGIN_REGEX
 from app.db.postgres import init_database
 from app.routes import query, upload, schema, account
 
@@ -15,10 +15,11 @@ app = FastAPI(
 def startup_event():
     init_database()
 
-# Configure CORS with strict environment-defined origins
+# Configure CORS with strict environment-defined origins and scoped Vercel deployment regex
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS if CORS_ORIGINS else ["http://localhost:3000"],
+    allow_origin_regex=CORS_ORIGIN_REGEX if CORS_ORIGIN_REGEX else None,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],

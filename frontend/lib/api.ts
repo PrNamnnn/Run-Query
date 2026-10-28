@@ -1,6 +1,8 @@
 import { getAccessToken } from './supabase';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+// Normalize base URL once by trimming whitespace and stripping any trailing slashes
+const RAW_API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+export const API_BASE = RAW_API_BASE.trim().replace(/\/+$/, '');
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const token = await getAccessToken();

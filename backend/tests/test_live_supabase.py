@@ -71,5 +71,18 @@ def run_live_supabase_test():
 
     print("\n>>> LIVE SUPABASE POSTGRESQL TEST PASSED 100%! <<<")
 
+def test_live_supabase_postgresql():
+    """Live integration test against Supabase PostgreSQL.
+    Requires live network access and valid Supabase credentials.
+    If the database host is unreachable (e.g. offline sandbox or missing credentials),
+    reports the skip reason clearly.
+    """
+    import pytest
+    import psycopg_pool
+    try:
+        run_live_supabase_test()
+    except (psycopg_pool.PoolTimeout, OSError) as e:
+        pytest.skip(f"Supabase PostgreSQL host unreachable (offline sandbox or network restricted): {e}")
+
 if __name__ == "__main__":
     run_live_supabase_test()

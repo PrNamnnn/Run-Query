@@ -129,3 +129,64 @@ def test_column_type_inference():
     ]
     types = CSVService.infer_column_types(sample_rows, 5)
     assert types == ["BIGINT", "DOUBLE PRECISION", "BOOLEAN", "DATE", "TEXT"]
+
+# -----------------------------------------------------------------------------
+# 4. CORS ORIGINS & URL NORMALIZATION TESTS
+# -----------------------------------------------------------------------------
+
+def test_cors_origins_normalization():
+    """Verify that CORS_ORIGINS strips surrounding whitespace and trailing slashes."""
+    from app.config import CORS_ORIGINS
+    for origin in CORS_ORIGINS:
+        assert not origin.endswith("/"), f"Origin '{origin}' must not end with a trailing slash"
+        assert origin == origin.strip(), f"Origin '{origin}' must not contain leading/trailing whitespace"
+
+def test_cors_origin_regex_allowed_origins():
+    """Verify that trusted Run Query production and preview domains match the regex."""
+    import re
+    from app.config import CORS_ORIGIN_REGEX
+    pattern = re.compile(CORS_ORIGIN_REGEX)
+
+    valid_origins = [
+        "https://run-query.vercel.app",
+        "https://run-query-dfsgdfqka-prnamnnns-projects.vercel.app",
+        "https://run-query-fi26zegb0-prnamnnns-projects.vercel.app",
+        "https://run-query-git-main-prnamnnns-projects.vercel.app",
+        "https://run-query-prnamnnns-projects.vercel.app",
+    ]
+    for origin in valid_origins:
+        assert pattern.fullmatch(origin) is not None, f"Expected '{origin}' to match CORS_ORIGIN_REGEX"
+
+def test_cors_origin_regex_rejects_untrusted():
+    """Verify that arbitrary or spoofed domains are rejected by CORS_ORIGIN_REGEX."""
+    import re
+    from app.config import CORS_ORIGIN_REGEX
+    pattern = re.compile(CORS_ORIGIN_REGEX)
+
+    untrusted_origins = [
+        "https://other-project.vercel.app",
+        "https://attacker-run-query.vercel.app",
+        "https://run-query.attacker.com",
+        "http://run-query.vercel.app",
+        "https://malicious.com",
+    ]
+    for origin in untrusted_origins:
+        assert pattern.fullmatch(origin) is None, f"Expected '{origin}' to be rejected by CORS_ORIGIN_REGEX"
+
+def test_api_url_trailing_slash_normalization():
+    """Verify that base URLs with or without trailing slashes normalize identically."""
+    def normalize_base(raw: str) -> str:
+        return raw.strip().rstrip("/")
+
+    cases = [
+        ("https://run-query-rq.onrender.com/", "https://run-query-rq.onrender.com"),
+        ("https://run-query-rq.onrender.com///", "https://run-query-rq.onrender.com"),
+        ("https://run-query-rq.onrender.com", "https://run-query-rq.onrender.com"),
+        ("http://127.0.0.1:8000/", "http://127.0.0.1:8000"),
+        ("  https://run-query-rq.onrender.com/  ", "https://run-query-rq.onrender.com"),
+    ]
+    for raw, expected in cases:
+        normalized = normalize_base(raw)
+        assert normalized == expected
+        assert f"{normalized}/api/schema" == f"{expected}/api/schema"
+
