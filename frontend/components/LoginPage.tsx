@@ -11,7 +11,7 @@ import {
   KeyRound, 
   Database 
 } from 'lucide-react';
-import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { getSupabase, isSupabaseConfigured, getAuthRedirectUrl } from '@/lib/supabase';
 import { RunQueryLogo } from './RunQueryLogo';
 
 interface LoginPageProps {
@@ -35,8 +35,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash || '';
       const search = window.location.search || '';
+
       if (hash.includes('type=recovery') || search.includes('type=recovery') || search.includes('token_hash=')) {
         window.location.href = `/reset-password${search || hash}`;
+        return;
+      }
+
+      // Check if arriving from signup email confirmation
+      if (hash.includes('type=signup') || search.includes('type=signup') || search.includes('confirmation_token=')) {
+        setSuccessMessage('Email confirmed successfully! You can now sign in.');
+      }
+
+      // Check if Supabase passed an auth error (e.g. expired confirmation or recovery link)
+      const params = new URLSearchParams(search || (hash.startsWith('#') ? hash.substring(1) : hash));
+      const errorDescription = params.get('error_description');
+      if (errorDescription) {
+        setErrorMessage(decodeURIComponent(errorDescription.replace(/\+/g, ' ')));
       }
     }
   }, []);
@@ -87,9 +101,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
     try {
       const supabase = getSupabase();
+      const redirectUrl = getAuthRedirectUrl();
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
+        options: {
+          emailRedirectTo: redirectUrl,
+        },
       });
 
       if (error) {
@@ -125,9 +143,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
     try {
       const supabase = getSupabase();
-      const redirectUrl = typeof window !== 'undefined' 
-        ? `${window.location.origin}/reset-password` 
-        : undefined;
+      const redirectUrl = getAuthRedirectUrl('/reset-password');
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: redirectUrl,
       });

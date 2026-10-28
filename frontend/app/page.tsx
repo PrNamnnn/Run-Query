@@ -122,6 +122,12 @@ export default function Home() {
         }
       }
       if (session?.user) {
+        if (typeof window !== 'undefined') {
+          const hash = window.location.hash || '';
+          if (hash.includes('access_token=') || hash.includes('type=signup')) {
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        }
         setCurrentUser(session.user.email || 'User');
       }
       setIsAuthChecking(false);
@@ -143,6 +149,9 @@ export default function Home() {
           if (hash.includes('type=recovery') || search.includes('type=recovery') || search.includes('token_hash=')) {
             window.location.href = `/reset-password${search || hash}`;
             return;
+          }
+          if (hash.includes('access_token=') || hash.includes('type=signup')) {
+            window.history.replaceState(null, '', window.location.pathname);
           }
         }
         setCurrentUser(session.user.email || 'User');
