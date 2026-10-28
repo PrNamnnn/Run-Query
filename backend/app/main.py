@@ -18,7 +18,10 @@ def startup_event():
 # Configure CORS with strict environment-defined origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS if CORS_ORIGINS else ["http://localhost:3000"],
+    allow_origins=[
+    "http://localhost:3000",
+    "https://run-query-dfsgdfqka-prnamnnns-projects.vercel.app",
+],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
